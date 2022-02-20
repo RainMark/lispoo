@@ -1,6 +1,10 @@
 # Prerequisites
 *.d
 
+# lispoo
+
+lispoo
+
 # Compiled Object files
 *.slo
 *.lo
