@@ -10,6 +10,8 @@ $ ./build.sh
 
 # example
 
+![lispoo.png](./lispoo.png)
+
 ```sh
 $ ./lispoo example/lambda.lisp
 (6)(18)
