@@ -13,7 +13,7 @@ namespace lispoo {
 
 inline void oops(const std::string& err) {
   std::cerr << err << std::endl;
-  exit(-1);
+  std::exit(EXIT_FAILURE);
 }
 
 enum class Type {
@@ -65,12 +65,12 @@ class Null: public Expr {
 public:
   Type type() override { return Type::Null; }
 };
-static const std::shared_ptr<Null> null_expr = std::make_shared<Null>();
+static const std::shared_ptr<Expr> nil = std::make_shared<Null>();
 
 class List: public Expr {
 public:
   Type type() override { return Type::List; }
-  const std::vector<std::shared_ptr<Expr>>& value() const { return value_; }
+  std::vector<std::shared_ptr<Expr>>& value() { return value_; }
   void append(const std::shared_ptr<Expr>& expr) { value_.emplace_back(expr); }
 
 private:
@@ -91,65 +91,86 @@ private:
   Fn lambda_;
 };
 
+// environment
+
 class Env {
 public:
   Env(const std::shared_ptr<Env>& env) : env_(env) {}
 
-  std::shared_ptr<Expr> get(const std::shared_ptr<Symbol>& symbol) const {
-    // std::cout << "get: " << symbol->value() << std::endl;
-    auto it = expr_map_.find(symbol->value());
+  std::shared_ptr<Expr> get(const std::string& symbol) const {
+    auto it = expr_map_.find(symbol);
     if (it != expr_map_.end()) {
       return it->second;
     }
     if (env_) {
       return env_->get(symbol);
     }
-    return null_expr;
+    return nil;
   }
-  void put(const std::shared_ptr<Symbol>& symbol, const std::shared_ptr<Expr>& expr) {
-    // std::cout << "put: " << symbol->value() << std::endl;
-    expr_map_[symbol->value()] = expr;
+  void put(const std::string& symbol, const std::shared_ptr<Expr>& expr) {
+    expr_map_[symbol] = expr;
   }
 
 private:
   std::unordered_map<std::string, std::shared_ptr<Expr>> expr_map_;
   std::shared_ptr<Env> env_;
 };
-
 static std::shared_ptr<Env> global = std::make_shared<Env>(std::shared_ptr<Env>());
-
-inline void register_symbol(const std::string& symbol, Callable::Fn&& lambda) {
-  global->put(std::make_shared<Symbol>(symbol), std::make_shared<Callable>(std::forward<Callable::Fn>(lambda)));
+inline void putenv(const std::string& symbol, Callable::Fn&& lambda) {
+  global->put(symbol, std::make_shared<Callable>(std::forward<Callable::Fn>(lambda)));
 }
+
+// type utils
 
 inline bool is_par(char ch) {
   return ch == '(' || ch == ')';
 }
-inline bool is_number(const Type& type) {
-  return type == Type::Integer || type == Type::Float;
+template <typename T>
+inline decltype(auto) get_value(const std::shared_ptr<Expr>& expr) {
+  return std::static_pointer_cast<T>(expr)->value();
 }
-inline bool is_atom(const Type& type) {
-  return type < Type::Atom;
+template <Type t>
+inline bool is_type(const std::shared_ptr<Expr>& expr) {
+  return expr && expr->type() == t;
+}
+inline bool is_nil(const std::shared_ptr<Expr>& expr) {
+  return is_type<Type::Null>(expr);
+}
+inline bool is_number(const std::shared_ptr<Expr>& expr) {
+  return is_type<Type::Integer>(expr) || is_type<Type::Float>(expr);
+}
+inline bool is_symbol(const std::shared_ptr<Expr>& expr) {
+  return is_type<Type::Symbol>(expr);
 }
 inline bool is_true(const std::shared_ptr<Expr>& expr) {
-  if (!is_number(expr->type())) {
+  if (!is_number(expr)) {
     return false;
   }
-  if (expr->type() == Type::Integer) {
-    return std::static_pointer_cast<Integer>(expr)->value();
+  if (is_type<Type::Integer>(expr)) {
+    return get_value<Integer>(expr);
   }
-  return std::static_pointer_cast<Float>(expr)->value() != 0.0;
+  return get_value<Float>(expr);
 }
-inline void len_eq(const std::shared_ptr<Expr>& expr, unsigned long expect) {
-  if (expr->type() != Type::List) {
-    oops("len_eq() can't check non List type");
-  }
-  auto list = std::static_pointer_cast<List>(expr);
-  if (list->value().size() != expect) {
-    auto symbol = std::static_pointer_cast<Symbol>(list->value()[0]);
-    oops("symbol: " + symbol->value() + " length not eq: " + std::to_string(expect));
+
+// asserts
+
+template <Type t>
+inline void assert_type(const std::shared_ptr<Expr>& expr) {
+  if (!is_type<t>(expr)) {
+    oops("syntax error");
   }
 }
+inline void assert_len(const std::shared_ptr<Expr>& expr, unsigned long expect) {
+  if (!is_type<Type::List>(expr)) {
+    oops("assert_len() failed, not List type");
+  }
+  auto value = get_value<List>(expr);
+  if (value.size() != expect) {
+    oops("assert_len() failed, expect: " + std::to_string(expect));
+  }
+}
+
+// parse & evaluate
 
 inline void tokenize(const std::string& str, std::vector<std::string>& tokens) {
   for (auto i = 0; i < str.size(); ++i) {
@@ -186,21 +207,22 @@ inline std::shared_ptr<Expr> parse_atom(const std::vector<std::string>& tokens, 
     }
   }
   switch (type) {
-  case Type::Symbol:
-    return std::make_shared<Symbol>(token);
-  case Type::Integer:
-    return std::make_shared<Integer>(std::stol(token));
-  case Type::Float:
-    return std::make_shared<Float>(std::stod(token));
+    case Type::Symbol:
+        return std::make_shared<Symbol>(token);
+    case Type::Integer:
+        return std::make_shared<Integer>(std::stol(token));
+    case Type::Float:
+        return std::make_shared<Float>(std::stod(token));
+    default:
+        break;
   }
-  return std::shared_ptr<Expr>();
+  return nil;
 }
 
 inline std::shared_ptr<Expr> parse(const std::vector<std::string>& tokens, unsigned long& cursor) {
   if (cursor >= tokens.size()) {
     oops("parse error");
   }
-  // std::cout << "parse: " << tokens[cursor] << std::endl;
   if (tokens[cursor] == "(") {
     auto list = std::make_shared<List>();
     while (tokens[++cursor] != ")") {
@@ -214,49 +236,48 @@ inline std::shared_ptr<Expr> parse(const std::vector<std::string>& tokens, unsig
 inline std::shared_ptr<Expr> eval(const std::shared_ptr<Expr>& expr, const std::shared_ptr<Env>& env) {
   if (!expr) {
     oops("syntax error");
-    return null_expr;
+    return nil;
   }
-  auto type = expr->type();
-  if (is_number(type)) {
+  if (is_number(expr)) {
     return expr;
   }
-  if (type == Type::Symbol) {
-    return env->get(std::static_pointer_cast<Symbol>(expr));
+  if (is_symbol(expr)) {
+    return env->get(get_value<Symbol>(expr));
   }
-  if (type != Type::List) {
-    oops("syntax error");
-  }
-  auto& value = std::static_pointer_cast<List>(expr)->value();
-  std::shared_ptr<Symbol> _ = std::static_pointer_cast<Symbol>(value[0]);
-  auto& name = _->value();
+  assert_type<Type::List>(expr);
+  auto value = get_value<List>(expr);
+  assert_type<Type::Symbol>(value[0]);
+  auto name = get_value<Symbol>(value[0]);
   if (name == "quote") {
-    len_eq(expr, 2);
+    assert_len(expr, 2);
     return value[1];
   }
   if (name == "def") {
-    len_eq(expr, 3);
-    auto symbol = std::static_pointer_cast<Symbol>(value[1]);
-    if (env->get(symbol)->type() != Type::Null) {
-      oops("symbol defined: " + symbol->value());
+    assert_len(expr, 3);
+    assert_type<Type::Symbol>(value[1]);
+    auto symbol = get_value<Symbol>(value[1]);
+    if (!is_nil(env->get(symbol))) {
+      oops("symbol defined: " + symbol);
     }
     env->put(symbol, eval(value[2], env));
-    return null_expr;
+    return nil;
   }
   if (name == "set!") {
-    len_eq(expr, 3);
-    auto symbol = std::static_pointer_cast<Symbol>(value[1]);
+    assert_len(expr, 3);
+    assert_type<Type::Symbol>(value[1]);
+    auto symbol = get_value<Symbol>(value[1]);
     env->put(symbol, eval(value[2], env));
-    return null_expr;
+    return nil;
   }
   if (name == "prog") {
     for (auto i = 1; i < value.size(); ++i) {
       eval(value[i], env);
     }
-    return null_expr;
+    return nil;
   }
   if (name == "if") {
     // (if (cond) (then body) (else body))
-    len_eq(expr, 4);
+    assert_len(expr, 4);
     if (is_true(eval(value[1], env))) {
       return eval(value[2], env);
     } else {
@@ -265,23 +286,25 @@ inline std::shared_ptr<Expr> eval(const std::shared_ptr<Expr>& expr, const std::
   }
   if (name == "while") {
     // (while (cond) (loop body))
-    len_eq(expr, 3);
+    assert_len(expr, 3);
     while (is_true(eval(value[1], env))) {
       eval(value[2], env);
     }
-    return null_expr;
+    return nil;
   }
   if (name == "lambda") {
     // (lambda (args) (body))
-    len_eq(expr, 3);
+    assert_len(expr, 3);
     auto lambda = [expr, parent = env](const std::shared_ptr<List>& args) {
-      auto& value = std::static_pointer_cast<List>(expr)->value();
-      auto symbols = std::static_pointer_cast<List>(value[1]);
+      auto value = get_value<List>(expr);
+      auto symbols = get_value<List>(value[1]);
       // arguments bind
-      len_eq(symbols, args->value().size());
+      if (symbols.size() != args->value().size()) {
+        oops("arguments error");
+      }
       auto env = std::make_shared<Env>(parent);
-      for (auto i = 0; i < symbols->value().size(); ++i) {
-        auto symbol = std::static_pointer_cast<Symbol>(symbols->value()[i]);
+      for (auto i = 0; i < symbols.size(); ++i) {
+        auto symbol = get_value<Symbol>(symbols[i]);
         env->put(symbol, args->value()[i]);
       }
       // eval body
@@ -291,18 +314,18 @@ inline std::shared_ptr<Expr> eval(const std::shared_ptr<Expr>& expr, const std::
   }
   // function/lambda call
   // (symbol arg1 arg2 arg3 ... )
-  auto callable = env->get(_);
+  auto callable = env->get(name);
   if (!callable) {
     oops("unknow symbol: " + name);
   }
-  if (callable->type() != Type::Callable) {
+  if (!is_type<Type::Callable>(callable)) {
     oops("can't call symbol: " + name);
   }
   auto args = std::make_shared<List>();
   for (auto i = 1; i < value.size(); ++i) {
     args->append(eval(value[i], env));
   }
-  return std::static_pointer_cast<Callable>(callable)->value()(args);
+  return get_value<Callable>(callable)(args);
 }
 
 } // namespace lispoo
