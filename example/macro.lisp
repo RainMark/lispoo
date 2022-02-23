@@ -1,5 +1,5 @@
-(prog
- (message (quote (name args)))
- (def echo message)
- (echo 1)
- )
+(progn
+  (message (quote (name args)))
+  (define echo message)
+  (echo 1)
+  )

@@ -77,9 +77,11 @@ private:
   std::vector<std::shared_ptr<Expr>> value_;
 };
 
+class Env;
 class Callable: public Expr {
 public:
-  using Fn = std::function<std::shared_ptr<Expr>(const std::shared_ptr<List>&)>;
+  using Fn = std::function<std::shared_ptr<Expr>(const std::shared_ptr<Expr>&,
+                                                 const std::shared_ptr<Env>& env)>;
 
   explicit Callable(Fn&& lambda) : lambda_(lambda) {}
   Type type() override { return Type::Callable; }
@@ -248,70 +250,6 @@ inline std::shared_ptr<Expr> eval(const std::shared_ptr<Expr>& expr, const std::
   auto value = get_value<List>(expr);
   assert_type<Type::Symbol>(value[0]);
   auto name = get_value<Symbol>(value[0]);
-  if (name == "quote") {
-    assert_len(expr, 2);
-    return value[1];
-  }
-  if (name == "def") {
-    assert_len(expr, 3);
-    assert_type<Type::Symbol>(value[1]);
-    auto symbol = get_value<Symbol>(value[1]);
-    if (!is_nil(env->get(symbol))) {
-      oops("symbol defined: " + symbol);
-    }
-    env->put(symbol, eval(value[2], env));
-    return nil;
-  }
-  if (name == "set!") {
-    assert_len(expr, 3);
-    assert_type<Type::Symbol>(value[1]);
-    auto symbol = get_value<Symbol>(value[1]);
-    env->put(symbol, eval(value[2], env));
-    return nil;
-  }
-  if (name == "prog") {
-    for (auto i = 1; i < value.size(); ++i) {
-      eval(value[i], env);
-    }
-    return nil;
-  }
-  if (name == "if") {
-    // (if (cond) (then body) (else body))
-    assert_len(expr, 4);
-    if (is_true(eval(value[1], env))) {
-      return eval(value[2], env);
-    } else {
-      return eval(value[3], env);
-    }
-  }
-  if (name == "while") {
-    // (while (cond) (loop body))
-    assert_len(expr, 3);
-    while (is_true(eval(value[1], env))) {
-      eval(value[2], env);
-    }
-    return nil;
-  }
-  if (name == "lambda") {
-    // (lambda (args) (body))
-    assert_len(expr, 3);
-    auto lambda = [expr, parent = env](const std::shared_ptr<List>& args) {
-      auto value = get_value<List>(expr);
-      auto symbols = get_value<List>(value[1]);
-      // arguments bind
-      if (symbols.size() != args->value().size()) {
-        oops("arguments error");
-      }
-      auto env = std::make_shared<Env>(parent);
-      for (auto i = 0; i < symbols.size(); ++i) {
-        auto symbol = get_value<Symbol>(symbols[i]);
-        env->put(symbol, args->value()[i]);
-      }
-      // eval body
-      return eval(value[2], env);
-    };
-    return std::make_shared<Callable>(std::move(lambda));
-  }
   // function/lambda call
   // (symbol arg1 arg2 arg3 ... )
   auto callable = env->get(name);
@@ -321,11 +259,7 @@ inline std::shared_ptr<Expr> eval(const std::shared_ptr<Expr>& expr, const std::
   if (!is_type<Type::Callable>(callable)) {
     oops("can't call symbol: " + name);
   }
-  auto args = std::make_shared<List>();
-  for (auto i = 1; i < value.size(); ++i) {
-    args->append(eval(value[i], env));
-  }
-  return get_value<Callable>(callable)(args);
+  return get_value<Callable>(callable)(expr, env);
 }
 
 } // namespace lispoo
