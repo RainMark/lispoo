@@ -1,7 +1,8 @@
-#include <lispoo.h>
 #include <core.h>
-#include <sstream>
+#include <lispoo.h>
+
 #include <fstream>
+#include <sstream>
 
 int main(int argc, char* argv[]) {
   if (argc != 2) {
