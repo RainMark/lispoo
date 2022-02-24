@@ -1,3 +1,3 @@
 #!/bin/bash
 
-g++ -std=c++17 -I. lispoo.cpp -o lispoo
+g++ -Werror -std=c++20 -Isrc src/lispoo.cpp -o lispoo

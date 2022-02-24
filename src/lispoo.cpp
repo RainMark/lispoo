@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
   ss << ifs.rdbuf();
 
   lispoo::init();
-  unsigned long cursor = 0;
+  long cursor = 0;
   std::vector<std::string> tokens;
   lispoo::tokenize(ss.str(), tokens);
   auto expr = lispoo::parse(tokens, cursor);

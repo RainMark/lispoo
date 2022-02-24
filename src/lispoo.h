@@ -70,7 +70,7 @@ static const std::shared_ptr<Expr> nil = std::make_shared<Null>();
 class List: public Expr {
 public:
   Type type() override { return Type::List; }
-  std::vector<std::shared_ptr<Expr>>& value() { return value_; }
+  const std::vector<std::shared_ptr<Expr>>& value() const { return value_; }
   void append(const std::shared_ptr<Expr>& expr) { value_.emplace_back(expr); }
 
 private:
@@ -162,7 +162,7 @@ inline void assert_type(const std::shared_ptr<Expr>& expr) {
     oops("syntax error");
   }
 }
-inline void assert_len(const std::shared_ptr<Expr>& expr, unsigned long expect) {
+inline void assert_len(const std::shared_ptr<Expr>& expr, long expect) {
   if (!is_type<Type::List>(expr)) {
     oops("assert_len() failed, not List type");
   }
@@ -190,7 +190,7 @@ inline void tokenize(const std::string& str, std::vector<std::string>& tokens) {
   }
 }
 
-inline std::shared_ptr<Expr> parse_atom(const std::vector<std::string>& tokens, unsigned long& cursor) {
+inline std::shared_ptr<Expr> parse_atom(const std::vector<std::string>& tokens, long& cursor) {
   auto token = tokens[cursor];
   auto type = Type::Symbol;
   if (std::isdigit(token[0]) || token[0] == '-') {
@@ -221,7 +221,7 @@ inline std::shared_ptr<Expr> parse_atom(const std::vector<std::string>& tokens, 
   return nil;
 }
 
-inline std::shared_ptr<Expr> parse(const std::vector<std::string>& tokens, unsigned long& cursor) {
+inline std::shared_ptr<Expr> parse(const std::vector<std::string>& tokens, long& cursor) {
   if (cursor >= tokens.size()) {
     oops("parse error");
   }
