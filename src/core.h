@@ -4,23 +4,46 @@
 
 namespace lispoo {
 
-inline std::shared_ptr<Expr> sum(const std::shared_ptr<Expr>& a,
-                                 const std::shared_ptr<Expr>& b) {
-  if (a->type() == Type::Float && b->type() == Type::Float) {
-    return std::make_shared<Float>(get_value<Float>(a) + get_value<Float>(b));
+#define BI_OP(fn, op)                                                 \
+  inline std::shared_ptr<Expr> fn(const std::shared_ptr<Expr>& a,     \
+                                  const std::shared_ptr<Expr>& b) {   \
+    if (a->type() == Type::Float && b->type() == Type::Float) {       \
+      return std::make_shared<Float>(get_value<Float>(a)              \
+                                         op get_value<Float>(b));     \
+    }                                                                 \
+    if (a->type() == Type::Integer && b->type() == Type::Integer) {   \
+      return std::make_shared<Integer>(get_value<Integer>(a)          \
+                                           op get_value<Integer>(b)); \
+    }                                                                 \
+    if (a->type() == Type::Float) {                                   \
+      return std::make_shared<Float>(get_value<Float>(a)              \
+                                         op get_value<Integer>(b));   \
+    }                                                                 \
+    if (b->type() == Type::Float) {                                   \
+      return std::make_shared<Float>(get_value<Integer>(a)            \
+                                         op get_value<Float>(b));     \
+    }                                                                 \
+    oops(std::string(#op) +                                           \
+         " failed, type: " + std::to_string((int)a->type()) + " " +   \
+         std::to_string((int)b->type()));                             \
+    return nil;                                                       \
   }
-  if (a->type() == Type::Integer && b->type() == Type::Integer) {
-    return std::make_shared<Integer>(get_value<Integer>(a) +
-                                     get_value<Integer>(b));
-  }
-  if (a->type() == Type::Float) {
-    return std::make_shared<Float>(get_value<Float>(a) + get_value<Integer>(b));
-  }
-  if (b->type() == Type::Float) {
-    return std::make_shared<Float>(get_value<Integer>(a) + get_value<Float>(b));
-  }
-  return nil;
-}
+
+BI_OP(sum, +)
+BI_OP(sub, -)
+BI_OP(mul, *)
+BI_OP(div, /)
+
+BI_OP(eq, ==)
+BI_OP(gt, >)
+BI_OP(lt, <)
+BI_OP(gte, >=)
+BI_OP(lte, <=)
+
+BI_OP(_and, &&)
+BI_OP(_or, ||)
+
+#undef BI_OP
 
 inline std::shared_ptr<Expr> message(const std::shared_ptr<Expr>& expr) {
   auto type = expr->type();
@@ -118,7 +141,7 @@ inline void init() {
   putenv("lambda", [](auto expr, auto env) {
     // (lambda (args) (body))
     assert_len(expr, 3);
-    auto lambda = [expr, parent = env](auto args, auto) {
+    auto lambda = [expr](auto args, auto parent) {
       auto value = get_value<List>(expr);
       auto symbols = get_value<List>(value[1]);
       // arguments bind
@@ -138,11 +161,28 @@ inline void init() {
   });
 
   // normal builtin function
-  putenv("+", [](auto expr, auto env) {
-    assert_len(expr, 3);
-    auto value = get_value<List>(expr);
-    return sum(eval(value[1], env), eval(value[2], env));
-  });
+#define PUT_BI_OP(fn, op)                                \
+  putenv(#op, [](auto expr, auto env) {                  \
+    assert_len(expr, 3);                                 \
+    auto value = get_value<List>(expr);                  \
+    return fn(eval(value[1], env), eval(value[2], env)); \
+  })
+  PUT_BI_OP(sum, +);
+  PUT_BI_OP(sub, -);
+  PUT_BI_OP(mul, *);
+  PUT_BI_OP(div, /);
+
+  PUT_BI_OP(eq, ==);
+  PUT_BI_OP(gt, >);
+  PUT_BI_OP(lt, <);
+  PUT_BI_OP(gte, >=);
+  PUT_BI_OP(lte, <=);
+
+  PUT_BI_OP(_and, &&);
+  PUT_BI_OP(_or, ||);
+
+#undef PUT_BI_OP
+
   putenv("message", [](auto expr, auto env) {
     auto value = get_value<List>(expr);
     for (auto i = 1; i < value.size(); ++i) {

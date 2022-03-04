@@ -143,7 +143,8 @@ inline bool is_symbol(const std::shared_ptr<Expr>& expr) {
 }
 inline bool is_true(const std::shared_ptr<Expr>& expr) {
   if (!is_number(expr)) {
-    return false;
+    oops("is_true() failed, not number type: " +
+         std::to_string((int)expr->type()));
   }
   if (is_type<Type::Integer>(expr)) {
     return get_value<Integer>(expr);
@@ -192,7 +193,7 @@ inline std::shared_ptr<Expr> parse_atom(const std::vector<std::string>& tokens,
                                         long& cursor) {
   auto token = tokens[cursor];
   auto type = Type::Symbol;
-  if (std::isdigit(token[0]) || token[0] == '-') {
+  if (std::isdigit(token[0]) || (token[0] == '-' && token.size() > 1)) {
     type = Type::Integer;
     for (auto i = 1; i < token.size(); ++i) {
       if (token[i] == '.') {
@@ -239,7 +240,6 @@ inline std::shared_ptr<Expr> eval(const std::shared_ptr<Expr>& expr,
                                   const std::shared_ptr<Env>& env) {
   if (!expr) {
     oops("syntax error");
-    return nil;
   }
   if (is_number(expr)) {
     return expr;
